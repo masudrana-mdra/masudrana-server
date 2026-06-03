@@ -1,0 +1,42 @@
+# Render Deployment Configuration
+services:
+  - type: web
+    name: portfolio-backend
+    runtime: node
+    plan: free
+    env: node
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: NODE_ENV
+        value: production
+      # MongoDB Atlas - Set these in Render dashboard
+      - key: MONGODB_URI
+        sync: false
+      - key: MONGODB_DB
+        sync: false
+      # Authentication Secrets - Set these in Render dashboard
+      - key: JWT_SECRET
+        sync: false
+      - key: BETTER_AUTH_SECRET
+        sync: false
+      # Google OAuth - Set these in Render dashboard
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      # Frontend URL - Update after Vercel deployment
+      - key: CLIENT_URL
+        sync: false
+      # Admin Configuration
+      - key: ADMIN_EMAILS
+        sync: false
+      # Email Configuration
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_PASS
+        sync: false
+    healthCheckPath: /api/health
+    autoDeploy: true
