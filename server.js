@@ -154,19 +154,61 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Better Auth route handler (MUST be mounted BEFORE express.json body parser)
-app.all('/api/auth/*', async (req, res) => {
+// Better Auth route handler using Express Router  
+const authRouter = express.Router();
+
+authRouter.all('*', async (req, res, next) => {
   try {
+    // Ensure database connection
+    if (mongoose.connection.readyState !== 1) {
+      console.error('[Better Auth] Database not connected');
+      return res.status(503).json({
+        success: false,
+        message: 'Database connection failed',
+      });
+    }
+
     const auth = await getAuth();
-    const { toNodeHandler } = await import('better-auth/node');
-    return toNodeHandler(auth)(req, res);
+    
+    // Get the path relative to /api/auth
+    const path = req.path || '/';
+    
+    console.log(`[Better Auth] ${req.method} ${path}`);
+    
+    // Route to appropriate auth.api methods for simple endpoints
+    if (path === '/session' && req.method === 'GET') {
+      console.log('[Better Auth] Using auth.api.getSession()');
+      const session = await auth.api.getSession({ headers: req.headers });
+      return res.json(session);
+    } else if (path === '/sign-out' && req.method === 'POST') {
+      console.log('[Better Auth] Using auth.api.signOut()');
+      const result = await auth.api.signOut({ headers: req.headers });
+      return res.json(result);
+    } else {
+      // For all other routes, use toNodeHandler
+      console.log(`[Better Auth] Using toNodeHandler for ${req.method} ${path}`);
+      
+      const { toNodeHandler } = await import('better-auth/node');
+      const handler = toNodeHandler(auth);
+      return handler(req, res);
+    }
   } catch (error) {
-    console.error('Better Auth endpoint crash:', error);
-    res.status(500).json({ success: false, message: 'Internal authentication server error' });
+    console.error('[Better Auth] Error:', error.message);
+    
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: 'Authentication service unavailable',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      });
+    }
   }
 });
 
-// Body parsers (only run for non-auth requests)
+// Mount auth router at /api/auth
+app.use('/api/auth', authRouter);
+
+// Body parsers (AFTER Better Auth handler)
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -186,8 +228,9 @@ const limiter = rateLimit({
 });
 app.use('/api', limiter);
 
-// Mount routers
-app.use('/api/auth', authRoutes);
+// Mount routers (Better Auth handles /api/auth/*, so custom auth routes would conflict)
+// Only use custom authRoutes for non-Better-Auth endpoints if needed
+// app.use('/api/auth', authRoutes);  // DISABLED: Better Auth handles all /api/auth/* routes
 app.use('/api/projects', projectRoutes);
 app.use('/api/blogs', blogRoutes);
 app.use('/api/skills', skillRoutes);
@@ -213,7 +256,7 @@ app.use(errorHandler);
 
 // Listen unconditionally (for persistent Render instance)
 const PORT = process.env.PORT || 10000;
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, async () => {
   console.log(`Server running in ${process.env.NODE_ENV || 'production'} mode on port ${PORT}`);
 });
 
